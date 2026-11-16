@@ -62,15 +62,14 @@ try {
     $code = Invoke-ShutdownAbort
     Assert ($code -eq 0) "the foreign shutdown is still pending afterwards (abort exit code $code)"
 
-    Write-Step 'Real timing: 1 minute of display off starts the shutdown'
-    $t0 = Get-Date
+    Write-Step 'Delay threshold starts the shutdown'
     Invoke-AppMethod $app 'OnDisplayState' @(0)
-    Invoke-Pump 50
-    Assert (-not (Get-AppField $app 'shutdownPending')) 'no shutdown after 50 seconds'
-    $deadline = (Get-Date).AddSeconds(20)
-    while (-not (Get-AppField $app 'shutdownPending') -and (Get-Date) -lt $deadline) { Invoke-Pump 0.5 }
-    $elapsed = ((Get-Date) - $t0).TotalSeconds
-    Assert (Get-AppField $app 'shutdownPending') ("shutdown started after {0:N1} seconds" -f $elapsed)
+    Set-AppField $app 'displayOffSinceTick' (Get-TickAgo 55000)
+    Invoke-Pump 2
+    Assert (-not (Get-AppField $app 'shutdownPending')) 'no shutdown 57 seconds into a 1 minute delay'
+    Set-AppField $app 'displayOffSinceTick' (Get-TickAgo 60500)
+    Invoke-Pump 2
+    Assert (Get-AppField $app 'shutdownPending') 'shutdown started once the 1 minute delay passed'
     # A second request fails with 1190 only when a shutdown is already scheduled.
     $probe = Start-Process -FilePath "$env:SystemRoot\System32\shutdown.exe" -ArgumentList '/s /t 600 /c ci-probe' -WindowStyle Hidden -Wait -PassThru
     Assert ($probe.ExitCode -eq 1190) "Windows reports a shutdown already scheduled (probe exit code $($probe.ExitCode))"

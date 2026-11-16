@@ -4,46 +4,74 @@ on:
   push:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
-    runs-on: windows-2025
-    timeout-minutes: 20
+  package:
+    runs-on: macos-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
+      - name: Build release zip
+        run: ./build.sh dist
+      - uses: actions/upload-artifact@v5
+        with:
+          name: package
+          path: dist/*.zip
 
-      - name: Environment
-        shell: powershell
-        run: |
-          $PSVersionTable.PSVersion.ToString()
-          (Get-CimInstance Win32_OperatingSystem).Caption
-          whoami
-          "UserInteractive: $([Environment]::UserInteractive)"
-          "SessionId: $((Get-Process -Id $PID).SessionId)"
-          "explorer: $(@(Get-Process explorer -ErrorAction SilentlyContinue).Count)"
-          query user 2>&1 | Out-String
-          exit 0
-
+  unit:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
       - name: Parse and compile
         shell: powershell
         run: .\tests\compile.ps1
-
       - name: State machine with real shutdown.exe
         shell: powershell
         run: .\tests\state.ps1
+      - name: Abort any pending shutdown
+        if: always()
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          cmd.exe /c "shutdown.exe /a >nul 2>&1"
+          exit 0
 
-      - name: Install and uninstall
+  install:
+    needs: package
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: package
+          path: pkg
+      - name: Extract release zip like Explorer
+        shell: powershell
+        run: .\tests\extract.ps1
+      - name: Install, use and uninstall from the extracted folder
         shell: powershell
         run: .\tests\install.ps1
+      - name: Abort any pending shutdown
+        if: always()
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          cmd.exe /c "shutdown.exe /a >nul 2>&1"
+          exit 0
 
+  e2e:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
       - name: End to end with real display off
         shell: powershell
         run: .\tests\e2e.ps1
-
-      - name: Real display-off experiment
-        continue-on-error: true
-        shell: powershell
-        run: .\tests\display.ps1
-
       - name: Abort any pending shutdown
         if: always()
         shell: powershell

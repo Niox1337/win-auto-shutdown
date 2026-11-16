@@ -2,7 +2,7 @@
 
 Write-Step 'Encoding'
 $bytes = [System.IO.File]::ReadAllBytes($script:AppScript)
-Assert ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) 'AutoShutdown.ps1 starts with a UTF-8 BOM'
+Assert ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) 'app script starts with a UTF-8 BOM'
 
 Write-Step 'Parse'
 $source = Get-AppSource

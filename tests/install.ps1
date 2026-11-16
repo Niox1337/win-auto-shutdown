@@ -37,14 +37,15 @@ function Get-StartMenuLinks {
 }
 
 Write-Step 'Environment'
+Write-Host "app dir: $($script:AppDir)"
 $explorer = @(Get-Process explorer -ErrorAction SilentlyContinue)
 $explorerElevated = if ($explorer.Count -gt 0) { [TestNative]::IsElevated($explorer[0].Id) } else { -1 }
 Write-Host "explorer running: $($explorer.Count -gt 0), explorer elevated: $explorerElevated"
 Write-Host "test process elevated: $([TestNative]::IsElevated($PID))"
 
 Write-Step 'Install'
-$r = Invoke-AppScript (Join-Path $script:RepoRoot 'Install.cmd')
-Assert ($r.Code -eq 0) 'Install.cmd exits with 0'
+$r = Invoke-AppScript $script:InstallCmd
+Assert ($r.Code -eq 0) 'install command exits with 0'
 Assert ($r.Output -match '\[dialog:Information\]') 'install reports completion'
 Assert (Test-Path -LiteralPath $installed) 'script copied to %LOCALAPPDATA%\AutoShutdown'
 $run = Get-RunValue
@@ -97,8 +98,8 @@ Assert ($null -eq (Get-ItemProperty -Path $script:ApprovedKey -Name 'AutoShutdow
 Assert ($null -ne (Get-RunValue)) 'Run value present after reinstall'
 
 Write-Step 'Uninstall'
-$r = Invoke-AppScript (Join-Path $script:RepoRoot 'Uninstall.cmd')
-Assert ($r.Code -eq 0) 'Uninstall.cmd exits with 0'
+$r = Invoke-AppScript $script:UninstallCmd
+Assert ($r.Code -eq 0) 'uninstall command exits with 0'
 Assert ((Wait-InstalledAppProcesses 0 10).Count -eq 0) 'no instance after uninstall'
 Assert ($null -eq (Get-RunValue)) 'Run value removed'
 Assert (@(Get-StartMenuLinks).Count -eq 0) 'Start menu shortcut removed'

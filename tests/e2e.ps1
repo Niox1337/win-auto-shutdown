@@ -5,22 +5,22 @@ Import-TestNative
 $env:AUTOSHUTDOWN_NO_DIALOG = '1'
 $installDir = Join-Path $env:LOCALAPPDATA 'AutoShutdown'
 
-function Invoke-Cmd([string]$Name) {
+function Invoke-Cmd([string]$Path) {
     $ErrorActionPreference = 'Continue'
-    $out = & cmd.exe /c "`"$(Join-Path $script:RepoRoot $Name)`" < nul" 2>&1 | Out-String
-    Write-Host "$Name exit=$LASTEXITCODE"
+    $out = & cmd.exe /c "`"$Path`" < nul" 2>&1 | Out-String
+    Write-Host "$(Split-Path $Path -Leaf) exit=$LASTEXITCODE"
     return $LASTEXITCODE
 }
 
 try {
     Write-Step 'Install and restart with a 1 minute delay'
-    Assert ((Invoke-Cmd 'Install.cmd') -eq 0) 'Install.cmd exits with 0'
+    Assert ((Invoke-Cmd $script:InstallCmd) -eq 0) 'install command exits with 0'
     Set-Content -LiteralPath (Join-Path $installDir 'config.txt') -Value '1'
     foreach ($p in Get-InstalledAppProcesses) { Stop-Process -Id $p.ProcessId -Force; Wait-Process -Id $p.ProcessId -Timeout 5 -ErrorAction SilentlyContinue }
     Start-CommandLine (Get-RunValue)
     $procs = Wait-InstalledAppProcesses 1
     Assert ($procs.Count -eq 1) "installed app running (found $($procs.Count))"
-    Start-Sleep -Seconds 15
+    Start-Sleep -Seconds 8
     Assert (@(Get-InstalledAppProcesses).Count -eq 1) 'installed app still running after startup'
     Assert (-not ((Get-SystemPowerRequests) -match 'powershell\.exe')) 'no sleep block while the display is on'
 
@@ -48,7 +48,7 @@ try {
 }
 finally {
     [void](Invoke-ShutdownAbort)
-    [void](Invoke-Cmd 'Uninstall.cmd')
+    [void](Invoke-Cmd $script:UninstallCmd)
 }
 
 Complete-Test

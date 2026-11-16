@@ -145,7 +145,7 @@ namespace AutoShutdown
             Guid guid = DisplayStateGuid;
             registration = RegisterPowerSettingNotification(Handle, ref guid, 0);
             if (registration == IntPtr.Zero)
-                throw new InvalidOperationException("RegisterPowerSettingNotification failed: " + Marshal.GetLastWin32Error());
+                throw new InvalidOperationException("无法接收屏幕开关通知（错误码 " + Marshal.GetLastWin32Error() + "）。");
         }
 
         protected override void WndProc(ref Message m)
@@ -348,7 +348,7 @@ namespace AutoShutdown
             if (code != 0)
             {
                 displayOffSinceTick = Now();
-                tray.ShowBalloonTip(4000, "熄屏自动关机", "无法发起关机，shutdown.exe 返回 " + code + "。", ToolTipIcon.Warning);
+                tray.ShowBalloonTip(4000, "熄屏自动关机", "无法发起关机（错误码 " + code + "）。", ToolTipIcon.Warning);
                 SyncState();
                 return;
             }
