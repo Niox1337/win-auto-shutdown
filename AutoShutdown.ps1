@@ -234,7 +234,7 @@ namespace AutoShutdown
 
     public class App : ApplicationContext
     {
-        static readonly int[] Presets = { 2, 15, 30, 60, 120 };
+        static readonly int[] Presets = { 5, 15, 30, 60, 120 };
         const int GraceSeconds = 60;
         const int MaxMinutes = 7 * 24 * 60;
         const uint ES_CONTINUOUS = 0x80000000;
