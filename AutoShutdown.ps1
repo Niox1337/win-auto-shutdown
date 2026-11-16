@@ -8,7 +8,13 @@ $ErrorActionPreference = 'Stop'
 $AppTitle        = '熄屏自动关机'
 $InstallDir      = Join-Path $env:LOCALAPPDATA 'AutoShutdown'
 $InstalledScript = Join-Path $InstallDir 'AutoShutdown.ps1'
-$StartupLink     = Join-Path ([Environment]::GetFolderPath('Startup')) 'AutoShutdown.lnk'
+$StartMenuLink   = Join-Path ([Environment]::GetFolderPath('Programs')) "$AppTitle.lnk"
+$LegacyLink      = Join-Path ([Environment]::GetFolderPath('Startup')) 'AutoShutdown.lnk'
+$RunKey          = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+$ApprovedKey     = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run'
+$RunValueName    = 'AutoShutdown'
+$PsExe           = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+$Conhost         = Join-Path $env:SystemRoot 'System32\conhost.exe'
 $TrayHint        = '图标在任务栏右下角，时钟旁边。如果没看到，点一下时钟左边的 "^" 箭头（显示隐藏的图标）。'
 
 # AUTOSHUTDOWN_NO_DIALOG=1 prints messages to the console instead of showing dialogs, for unattended runs.
@@ -37,6 +43,12 @@ function Test-Elevated {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+# Removes the autostart entry and any Task Manager enable/disable record for it.
+function Remove-Autostart {
+    Remove-ItemProperty -Path $RunKey -Name $RunValueName -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $ApprovedKey -Name $RunValueName -ErrorAction SilentlyContinue
+}
+
 function Install-App {
     if ((Stop-OtherInstances) -gt 0) { Undo-PendingShutdown }
 
@@ -45,14 +57,19 @@ function Install-App {
         Copy-Item -LiteralPath $PSCommandPath -Destination $InstalledScript -Force
     }
     Unblock-File -LiteralPath $InstalledScript
+    Remove-Item -LiteralPath $LegacyLink -Force -ErrorAction SilentlyContinue
 
     # conhost --headless runs powershell without any visible console window.
-    $psExe   = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $conhost = Join-Path $env:SystemRoot 'System32\conhost.exe'
+    $arguments = "--headless `"$PsExe`" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$InstalledScript`""
+
+    Remove-Autostart
+    if (-not (Test-Path $RunKey)) { New-Item -Path $RunKey -Force | Out-Null }
+    New-ItemProperty -Path $RunKey -Name $RunValueName -Value "`"$Conhost`" $arguments" -PropertyType String -Force | Out-Null
+
     $shell = New-Object -ComObject WScript.Shell
-    $link = $shell.CreateShortcut($StartupLink)
-    $link.TargetPath       = $conhost
-    $link.Arguments        = "--headless `"$psExe`" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$InstalledScript`""
+    $link = $shell.CreateShortcut($StartMenuLink)
+    $link.TargetPath       = $Conhost
+    $link.Arguments        = $arguments
     $link.WorkingDirectory = $env:USERPROFILE
     $link.WindowStyle      = 7
     $link.Description      = $AppTitle
@@ -60,21 +77,24 @@ function Install-App {
 
     # explorer.exe hands the launch to the existing shell, so the instance runs non-elevated even from an elevated installer.
     if (Test-Elevated) {
-        Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList "`"$StartupLink`""
+        Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList "`"$StartMenuLink`""
     }
     else {
-        Start-Process -FilePath $StartupLink
+        Start-Process -FilePath $StartMenuLink
     }
 
-    Show-Message ("安装完成，已经在后台运行，以后开机也会自动启动。`n`n" +
-        "$TrayHint 右键绿色电源图标可以调整等待时间、暂停、退出或卸载。`n`n" +
+    Show-Message ("安装完成，已经在后台运行，默认开机自动启动。`n`n" +
+        "$TrayHint 右键绿色电源图标可以调整等待时间、暂停、开关开机自动启动、退出或卸载。`n`n" +
+        "退出后想再打开，在开始菜单里找 `"$AppTitle`"。`n`n" +
         "默认：屏幕关闭 30 分钟后关机。关机前有 60 秒倒计时，期间动一下鼠标或键盘即可取消。`n`n" +
         "注意：关机会强制关闭所有程序，没保存的内容会丢失。")
 }
 
 function Uninstall-App {
     if ((Stop-OtherInstances) -gt 0) { Undo-PendingShutdown }
-    Remove-Item -LiteralPath $StartupLink -Force -ErrorAction SilentlyContinue
+    Remove-Autostart
+    Remove-Item -LiteralPath $StartMenuLink -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $LegacyLink -Force -ErrorAction SilentlyContinue
     for ($i = 0; $i -lt 5 -and (Test-Path -LiteralPath $InstallDir); $i++) {
         Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
         if (Test-Path -LiteralPath $InstallDir) { Start-Sleep -Milliseconds 500 }
@@ -90,6 +110,7 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace AutoShutdown
 {
@@ -172,6 +193,9 @@ namespace AutoShutdown
         const int MaxMinutes = 7 * 24 * 60;
         const uint ES_CONTINUOUS = 0x80000000;
         const uint ES_SYSTEM_REQUIRED = 0x00000001;
+        const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        const string ApprovedKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+        const string RunValueName = "AutoShutdown";
 
         [StructLayout(LayoutKind.Sequential)]
         public struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
@@ -189,6 +213,7 @@ namespace AutoShutdown
         readonly Timer timer;
         readonly ToolStripMenuItem statusItem;
         readonly ToolStripMenuItem pauseItem;
+        readonly ToolStripMenuItem autostartItem;
         readonly ToolStripMenuItem delayMenu;
         readonly Icon activeIcon;
         readonly Icon pausedIcon;
@@ -232,7 +257,10 @@ namespace AutoShutdown
             pauseItem = new ToolStripMenuItem("暂停");
             pauseItem.Click += delegate { SetPaused(!paused); };
 
-            ToolStripMenuItem exitItem = new ToolStripMenuItem("退出（下次开机仍会启动）");
+            autostartItem = new ToolStripMenuItem("开机自动启动");
+            autostartItem.Click += delegate { SetAutostart(!IsAutostartEnabled()); };
+
+            ToolStripMenuItem exitItem = new ToolStripMenuItem("退出");
             exitItem.Click += delegate { ExitThread(); };
 
             ToolStripMenuItem uninstallItem = new ToolStripMenuItem("卸载");
@@ -243,6 +271,7 @@ namespace AutoShutdown
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(delayMenu);
             menu.Items.Add(pauseItem);
+            menu.Items.Add(autostartItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(exitItem);
             menu.Items.Add(uninstallItem);
@@ -398,6 +427,59 @@ namespace AutoShutdown
             ExitThread();
         }
 
+        string LaunchCommand()
+        {
+            string system = Environment.SystemDirectory;
+            return "\"" + Path.Combine(system, "conhost.exe") + "\" --headless \"" +
+                   Path.Combine(system, @"WindowsPowerShell\v1.0\powershell.exe") +
+                   "\" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + scriptPath + "\"";
+        }
+
+        // Autostart is on when the Run value exists and Task Manager has not marked it disabled.
+        // StartupApproved data starts with an even byte when enabled and an odd byte when disabled.
+        static bool IsAutostartEnabled()
+        {
+            try
+            {
+                using (RegistryKey run = Registry.CurrentUser.OpenSubKey(RunKeyPath))
+                {
+                    if (run == null || run.GetValue(RunValueName) == null) return false;
+                }
+                using (RegistryKey approved = Registry.CurrentUser.OpenSubKey(ApprovedKeyPath))
+                {
+                    if (approved == null) return true;
+                    byte[] data = approved.GetValue(RunValueName) as byte[];
+                    return data == null || data.Length == 0 || (data[0] & 1) == 0;
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        void SetAutostart(bool enabled)
+        {
+            try
+            {
+                using (RegistryKey run = Registry.CurrentUser.CreateSubKey(RunKeyPath))
+                {
+                    if (enabled) run.SetValue(RunValueName, LaunchCommand(), RegistryValueKind.String);
+                    else run.DeleteValue(RunValueName, false);
+                }
+                using (RegistryKey approved = Registry.CurrentUser.OpenSubKey(ApprovedKeyPath, true))
+                {
+                    if (approved != null) approved.DeleteValue(RunValueName, false);
+                }
+                tray.ShowBalloonTip(3000, "熄屏自动关机", enabled ? "已开启开机自动启动。" : "已关闭开机自动启动。", ToolTipIcon.Info);
+            }
+            catch (Exception ex)
+            {
+                tray.ShowBalloonTip(4000, "熄屏自动关机", "设置开机自动启动失败：" + ex.Message, ToolTipIcon.Warning);
+            }
+            SyncState();
+        }
+
         // Blocks idle sleep while counting or during the countdown. Display timeout, lid close and the power button are unaffected.
         void ApplySleepBlock()
         {
@@ -420,6 +502,7 @@ namespace AutoShutdown
             tray.Text = "熄屏自动关机：" + status;
             tray.Icon = paused ? pausedIcon : activeIcon;
             pauseItem.Checked = paused;
+            autostartItem.Checked = IsAutostartEnabled();
             foreach (ToolStripItem item in delayMenu.DropDownItems)
             {
                 ToolStripMenuItem menuItem = item as ToolStripMenuItem;

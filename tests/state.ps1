@@ -97,6 +97,30 @@ try {
     $code = Invoke-ShutdownAbort
     Assert ($code -eq 1116) "no shutdown is pending after cancellation (abort exit code $code)"
 
+    Write-Step 'Autostart toggle'
+    $isEnabled = { [AutoShutdown.App].GetMethod('IsAutostartEnabled', [System.Reflection.BindingFlags]'NonPublic,Static').Invoke($null, @()) }
+    $menuChecked = { Invoke-AppMethod $app 'SyncState'; (Get-AppField $app 'autostartItem').Checked }
+    Remove-ItemProperty -Path $script:RunKey -Name 'AutoShutdown' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $script:ApprovedKey -Name 'AutoShutdown' -ErrorAction SilentlyContinue
+    Assert (-not (& $isEnabled)) 'autostart reads as off without a Run value'
+    Assert (-not (& $menuChecked)) 'menu item unchecked without a Run value'
+    Invoke-AppMethod $app 'SetAutostart' @($true)
+    $run = Get-RunValue
+    Write-Host "Run value: $run"
+    Assert ($run -like "*-File `"$($script:AppScript)`"") 'turning autostart on writes a Run value for the script'
+    Assert (& $isEnabled) 'autostart reads as on'
+    Assert (& $menuChecked) 'menu item checked'
+    if (-not (Test-Path $script:ApprovedKey)) { New-Item -Path $script:ApprovedKey -Force | Out-Null }
+    New-ItemProperty -Path $script:ApprovedKey -Name 'AutoShutdown' -PropertyType Binary -Value ([byte[]](3,0,0,0,0,0,0,0,0,0,0,0)) -Force | Out-Null
+    Assert (-not (& $isEnabled)) 'a Task Manager disable record reads as off'
+    Assert (-not (& $menuChecked)) 'menu item unchecked when Task Manager disabled it'
+    Invoke-AppMethod $app 'SetAutostart' @($true)
+    Assert ($null -eq (Get-ItemProperty -Path $script:ApprovedKey -Name 'AutoShutdown' -ErrorAction SilentlyContinue)) 'turning autostart on clears the disable record'
+    Assert (& $isEnabled) 'autostart reads as on again'
+    Invoke-AppMethod $app 'SetAutostart' @($false)
+    Assert ($null -eq (Get-RunValue)) 'turning autostart off removes the Run value'
+    Assert (-not (& $menuChecked)) 'menu item unchecked after turning off'
+
     Write-Step 'Exit cleanup'
     Invoke-AppMethod $app 'OnDisplayState' @(0)
     Assert (Get-AppField $app 'sleepBlocked') 'sleep blocked before exit'
@@ -107,6 +131,8 @@ try {
 finally {
     if ($null -ne $app) { $app.ExitThread() }
     [void](Invoke-ShutdownAbort)
+    Remove-ItemProperty -Path $script:RunKey -Name 'AutoShutdown' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $script:ApprovedKey -Name 'AutoShutdown' -ErrorAction SilentlyContinue
 }
 
 Complete-Test

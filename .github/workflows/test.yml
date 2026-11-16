@@ -35,6 +35,10 @@ jobs:
         shell: powershell
         run: .\tests\install.ps1
 
+      - name: End to end with real display off
+        shell: powershell
+        run: .\tests\e2e.ps1
+
       - name: Real display-off experiment
         continue-on-error: true
         shell: powershell

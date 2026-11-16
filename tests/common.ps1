@@ -40,6 +40,11 @@ function Get-AppSource {
 function Import-AppTypes {
     Add-Type -AssemblyName System.Windows.Forms, System.Drawing
     Add-Type -TypeDefinition (Get-AppSource) -ReferencedAssemblies System.Windows.Forms, System.Drawing -IgnoreWarnings
+    Import-TestNative
+}
+
+function Import-TestNative {
+    if ($null -ne ('TestNative' -as [type])) { return }
     Add-Type -ReferencedAssemblies System.Windows.Forms -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -73,6 +78,34 @@ public static class TestNative
         inputs[0].mi.dwFlags = 1;
         uint sent = SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT)));
         return "sent=" + sent + " lastError=" + Marshal.GetLastWin32Error();
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    static extern bool GetTokenInformation(IntPtr token, int infoClass, out int info, int length, out int returned);
+
+    [DllImport("kernel32.dll")]
+    static extern bool CloseHandle(IntPtr handle);
+
+    // Returns 1 when the process token is elevated, 0 when not, -1 when it cannot be read.
+    public static int IsElevated(int pid)
+    {
+        IntPtr process = OpenProcess(0x1000, false, pid);
+        if (process == IntPtr.Zero) return -1;
+        IntPtr token;
+        if (!OpenProcessToken(process, 0x0008, out token)) { CloseHandle(process); return -1; }
+        int elevated;
+        int returned;
+        bool ok = GetTokenInformation(token, 20, out elevated, 4, out returned);
+        CloseHandle(token);
+        CloseHandle(process);
+        if (!ok) return -1;
+        return elevated != 0 ? 1 : 0;
     }
 
     public static uint LastInputTick()
@@ -138,4 +171,40 @@ function New-AppUnderTest([int]$Minutes) {
     $app = New-Object AutoShutdown.App($config, $script:AppScript)
     Invoke-Pump 2
     return $app
+}
+
+$script:RunKey      = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+$script:ApprovedKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run'
+
+function Get-RunValue {
+    return (Get-ItemProperty -Path $script:RunKey -Name 'AutoShutdown' -ErrorAction SilentlyContinue).AutoShutdown
+}
+
+# Starts a Run-key style command line by splitting the quoted executable from its arguments.
+function Start-CommandLine([string]$CommandLine) {
+    $m = [regex]::Match($CommandLine, '^"([^"]+)"\s+(.*)$')
+    if (-not $m.Success) { throw "Unexpected command line: $CommandLine" }
+    Start-Process -FilePath $m.Groups[1].Value -ArgumentList $m.Groups[2].Value
+}
+
+# Schedules a probe shutdown. Exit code 1190 means one was already scheduled. Exit code 0 means none was, and the probe is aborted again.
+function Test-ShutdownScheduled {
+    $p = Start-Process -FilePath "$env:SystemRoot\System32\shutdown.exe" -ArgumentList '/s /t 600 /c ci-probe' -WindowStyle Hidden -Wait -PassThru
+    if ($p.ExitCode -eq 0) { [void](Invoke-ShutdownAbort) }
+    return $p.ExitCode
+}
+
+function Get-InstalledAppProcesses {
+    return @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" |
+        Where-Object { $_.CommandLine -like '*AutoShutdown.ps1*' -and $_.CommandLine -notlike '*-Install*' -and $_.CommandLine -notlike '*-Uninstall*' })
+}
+
+function Wait-InstalledAppProcesses([int]$Count, [int]$TimeoutSeconds = 30) {
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        $procs = @(Get-InstalledAppProcesses)
+        if ($procs.Count -eq $Count) { return ,$procs }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+    return ,$procs
 }
