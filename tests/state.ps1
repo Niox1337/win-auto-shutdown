@@ -71,9 +71,9 @@ try {
     while (-not (Get-AppField $app 'shutdownPending') -and (Get-Date) -lt $deadline) { Invoke-Pump 0.5 }
     $elapsed = ((Get-Date) - $t0).TotalSeconds
     Assert (Get-AppField $app 'shutdownPending') ("shutdown started after {0:N1} seconds" -f $elapsed)
-    $events = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Id = 1074; StartTime = $t0 } -ErrorAction SilentlyContinue)
-    Assert ($events.Count -ge 1) 'System event 1074 records the shutdown request'
-    if ($events.Count -ge 1) { Write-Host ($events[0].Message) }
+    # A second request fails with 1190 only when a shutdown is already scheduled.
+    $probe = Start-Process -FilePath "$env:SystemRoot\System32\shutdown.exe" -ArgumentList '/s /t 600 /c ci-probe' -WindowStyle Hidden -Wait -PassThru
+    Assert ($probe.ExitCode -eq 1190) "Windows reports a shutdown already scheduled (probe exit code $($probe.ExitCode))"
     Assert (Get-AppField $app 'sleepBlocked') 'sleep stays blocked during the countdown'
 
     Write-Step 'Display turning on without input does not cancel'
