@@ -23,9 +23,9 @@ if ($null -ne $folder) {
     Get-ChildItem -LiteralPath $folder.FullName | ForEach-Object { Write-Host "  $($_.Name)" }
     $env:APP_DIR = $folder.FullName
     . (Join-Path $PSScriptRoot 'common.ps1')
-    Assert (Test-Path -LiteralPath $script:AppScript) 'app script extracted with its Chinese name'
-    Assert (Test-Path -LiteralPath $script:InstallCmd) 'install command extracted with its Chinese name'
-    Assert (Test-Path -LiteralPath $script:UninstallCmd) 'uninstall command extracted with its Chinese name'
+    Assert (Test-Path -LiteralPath $script:AppScript) 'app script extracted'
+    Assert (Test-Path -LiteralPath $script:InstallCmd) 'install command extracted'
+    Assert (Test-Path -LiteralPath $script:UninstallCmd) 'uninstall command extracted'
     $mark = Get-Content -LiteralPath $script:AppScript -Stream Zone.Identifier -ErrorAction SilentlyContinue
     Write-Host "downloaded-file mark on extracted script: $([bool]$mark)"
     Add-Content -Path $env:GITHUB_ENV -Value "APP_DIR=$($folder.FullName)" -Encoding UTF8

@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 >nul
 set "SCRIPT=%LOCALAPPDATA%\AutoShutdown\AutoShutdown.ps1"
-if not exist "%SCRIPT%" set "SCRIPT=%~dp0熄屏自动关机.ps1"
+if not exist "%SCRIPT%" set "SCRIPT=%~dp0AutoShutdown.ps1"
 if not exist "%SCRIPT%" (
-  echo 找不到 熄屏自动关机.ps1。请在解压出来的文件夹里双击 卸载.cmd。
+  echo 找不到 AutoShutdown.ps1。请在解压出来的文件夹里双击 Uninstall.cmd。
   pause
   exit /b 1
 )

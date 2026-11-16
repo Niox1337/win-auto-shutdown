@@ -1,11 +1,11 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 
 $script:RepoRoot     = Split-Path $PSScriptRoot -Parent
 # APP_DIR points at an extracted release folder. Without it the repository checkout is used.
 $script:AppDir       = if ($env:APP_DIR) { $env:APP_DIR } else { $script:RepoRoot }
-$script:AppScript    = Join-Path $script:AppDir '熄屏自动关机.ps1'
-$script:InstallCmd   = Join-Path $script:AppDir '安装.cmd'
-$script:UninstallCmd = Join-Path $script:AppDir '卸载.cmd'
+$script:AppScript    = Join-Path $script:AppDir 'AutoShutdown.ps1'
+$script:InstallCmd   = Join-Path $script:AppDir 'Install.cmd'
+$script:UninstallCmd = Join-Path $script:AppDir 'Uninstall.cmd'
 $script:Failures  = New-Object System.Collections.Generic.List[string]
 
 function Write-Step([string]$Text) { Write-Host "`n=== $Text ===" }
