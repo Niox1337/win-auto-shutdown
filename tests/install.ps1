@@ -22,6 +22,7 @@ function Wait-AppProcesses([int]$Count, [int]$TimeoutSeconds = 30) {
 }
 
 function Invoke-AppScript([string]$Path, [string[]]$Arguments = @()) {
+    $ErrorActionPreference = 'Continue'
     $sw = [Diagnostics.Stopwatch]::StartNew()
     if ($Path -like '*.cmd') {
         $out = & cmd.exe /c "`"$Path`" < nul" 2>&1 | Out-String
