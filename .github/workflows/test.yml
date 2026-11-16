@@ -9,71 +9,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  package:
-    runs-on: macos-latest
-    timeout-minutes: 5
+  test:
+    runs-on: windows-2025
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v5
+
       - name: Build release zip
+        timeout-minutes: 2
+        shell: bash
+        env:
+          PYTHON: python
         run: ./build.sh dist
-      - uses: actions/upload-artifact@v5
-        with:
-          name: package
-          path: dist/*.zip
 
-  unit:
-    runs-on: windows-2025
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v5
-      - name: Parse and compile
-        shell: powershell
-        run: .\tests\compile.ps1
-      - name: State machine with real shutdown.exe
-        shell: powershell
-        run: .\tests\state.ps1
-      - name: Abort any pending shutdown
-        if: always()
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Continue'
-          cmd.exe /c "shutdown.exe /a >nul 2>&1"
-          exit 0
-
-  install:
-    needs: package
-    runs-on: windows-2025
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v5
-        with:
-          name: package
-          path: pkg
       - name: Extract release zip like Explorer
+        timeout-minutes: 2
         shell: powershell
         run: .\tests\extract.ps1
+
+      - name: Parse and compile
+        timeout-minutes: 2
+        shell: powershell
+        run: .\tests\compile.ps1
+
+      - name: State machine with real shutdown.exe
+        timeout-minutes: 2
+        shell: powershell
+        run: .\tests\state.ps1
+
       - name: Install, use and uninstall from the extracted folder
+        timeout-minutes: 2
         shell: powershell
         run: .\tests\install.ps1
-      - name: Abort any pending shutdown
-        if: always()
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Continue'
-          cmd.exe /c "shutdown.exe /a >nul 2>&1"
-          exit 0
 
-  e2e:
-    runs-on: windows-2025
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v5
       - name: End to end with real display off
+        timeout-minutes: 2
         shell: powershell
         run: .\tests\e2e.ps1
+
       - name: Abort any pending shutdown
         if: always()
+        timeout-minutes: 1
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'

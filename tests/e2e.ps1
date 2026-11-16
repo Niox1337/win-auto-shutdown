@@ -15,13 +15,16 @@ function Invoke-Cmd([string]$Path) {
 try {
     Write-Step 'Install and restart with a 1 minute delay'
     Assert ((Invoke-Cmd $script:InstallCmd) -eq 0) 'install command exits with 0'
+    $initial = Wait-InstalledAppProcesses 1
+    Assert ($initial.Count -eq 1) "installer started one instance (found $($initial.Count))"
     Set-Content -LiteralPath (Join-Path $installDir 'config.txt') -Value '1'
     foreach ($p in Get-InstalledAppProcesses) { Stop-Process -Id $p.ProcessId -Force; Wait-Process -Id $p.ProcessId -Timeout 5 -ErrorAction SilentlyContinue }
     Start-CommandLine (Get-RunValue)
     $procs = Wait-InstalledAppProcesses 1
     Assert ($procs.Count -eq 1) "installed app running (found $($procs.Count))"
     Start-Sleep -Seconds 8
-    Assert (@(Get-InstalledAppProcesses).Count -eq 1) 'installed app still running after startup'
+    $n = @(Get-InstalledAppProcesses).Count
+    Assert ($n -eq 1) "installed app still running after startup (found $n)"
     Assert (-not ((Get-SystemPowerRequests) -match 'powershell\.exe')) 'no sleep block while the display is on'
 
     Write-Step 'Turn the display off'
@@ -44,7 +47,8 @@ try {
     Start-Sleep -Seconds 5
     $code = Test-ShutdownScheduled
     Assert ($code -eq 0) "mouse input cancelled the scheduled shutdown (probe exit code $code)"
-    Assert (@(Get-InstalledAppProcesses).Count -eq 1) 'installed app keeps running after cancelling'
+    $n = @(Get-InstalledAppProcesses).Count
+    Assert ($n -eq 1) "installed app keeps running after cancelling (found $n)"
 }
 finally {
     [void](Invoke-ShutdownAbort)

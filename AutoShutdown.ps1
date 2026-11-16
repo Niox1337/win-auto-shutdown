@@ -66,14 +66,9 @@ function Install-App {
     if (-not (Test-Path $RunKey)) { New-Item -Path $RunKey -Force | Out-Null }
     New-ItemProperty -Path $RunKey -Name $RunValueName -Value "`"$Conhost`" $arguments" -PropertyType String -Force | Out-Null
 
-    $shell = New-Object -ComObject WScript.Shell
-    $link = $shell.CreateShortcut($StartMenuLink)
-    $link.TargetPath       = $Conhost
-    $link.Arguments        = $arguments
-    $link.WorkingDirectory = $env:USERPROFILE
-    $link.WindowStyle      = 7
-    $link.Description      = $AppTitle
-    $link.Save()
+    # IShellLinkW keeps non-ASCII shortcut names and paths intact regardless of the system code page.
+    Add-Type -TypeDefinition $source -ReferencedAssemblies System.Windows.Forms, System.Drawing -IgnoreWarnings
+    [AutoShutdown.ShellLink]::Save($StartMenuLink, $Conhost, $arguments, $env:USERPROFILE, $AppTitle)
 
     # explorer.exe hands the launch to the existing shell, so the instance runs non-elevated even from an elevated installer.
     if (Test-Elevated) {
@@ -109,11 +104,62 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+using System.Text;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
 namespace AutoShutdown
 {
+    public static class ShellLink
+    {
+        [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
+        class CShellLink { }
+
+        [ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("000214F9-0000-0000-C000-000000000046")]
+        interface IShellLinkW
+        {
+            void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder file, int maxPath, IntPtr findData, int flags);
+            void GetIDList(out IntPtr idList);
+            void SetIDList(IntPtr idList);
+            void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder name, int maxName);
+            void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string name);
+            void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder dir, int maxPath);
+            void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string dir);
+            void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder args, int maxPath);
+            void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string args);
+            void GetHotkey(out short hotkey);
+            void SetHotkey(short hotkey);
+            void GetShowCmd(out int showCmd);
+            void SetShowCmd(int showCmd);
+            void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] StringBuilder iconPath, int maxIconPath, out int icon);
+            void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string iconPath, int icon);
+            void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string relativePath, int reserved);
+            void Resolve(IntPtr hwnd, int flags);
+            void SetPath([MarshalAs(UnmanagedType.LPWStr)] string file);
+        }
+
+        const int SW_SHOWMINNOACTIVE = 7;
+
+        public static void Save(string linkPath, string target, string arguments, string workingDirectory, string description)
+        {
+            IShellLinkW link = (IShellLinkW)new CShellLink();
+            try
+            {
+                link.SetPath(target);
+                link.SetArguments(arguments);
+                link.SetWorkingDirectory(workingDirectory);
+                link.SetDescription(description);
+                link.SetShowCmd(SW_SHOWMINNOACTIVE);
+                ((IPersistFile)link).Save(linkPath, true);
+            }
+            finally
+            {
+                Marshal.ReleaseComObject(link);
+            }
+        }
+    }
+
     // Hidden top-level window that receives GUID_CONSOLE_DISPLAY_STATE notifications and suspend broadcasts.
     // Display state values: 0 = off, 1 = on, 2 = dimmed.
     public class DisplayStateWindow : NativeWindow, IDisposable

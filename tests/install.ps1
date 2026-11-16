@@ -27,12 +27,13 @@ function Write-ProcessTree($Proc) {
     Write-Host "pid=$($Proc.ProcessId) parent=$($Proc.ParentProcessId) ($($parent.Name)) cmd=$($Proc.CommandLine)"
 }
 
-# Returns Start menu shortcuts that launch the installed script.
+# Returns Start menu shortcuts whose stored UTF-16 strings mention the installed script.
 function Get-StartMenuLinks {
-    $shell = New-Object -ComObject WScript.Shell
     $dir = [Environment]::GetFolderPath('Programs')
+    $needle = [Text.Encoding]::Unicode.GetString([Text.Encoding]::Unicode.GetBytes('AutoShutdown.ps1'))
     return @(Get-ChildItem -LiteralPath $dir -Filter '*.lnk' | Where-Object {
-        $shell.CreateShortcut($_.FullName).Arguments -like '*AutoShutdown.ps1*'
+        [Text.Encoding]::Unicode.GetString([IO.File]::ReadAllBytes($_.FullName)).Contains($needle) -or
+        [Text.Encoding]::Unicode.GetString([IO.File]::ReadAllBytes($_.FullName), 1, [IO.File]::ReadAllBytes($_.FullName).Length - 1).Contains($needle)
     })
 }
 
@@ -47,6 +48,7 @@ Write-Step 'Install'
 $r = Invoke-AppScript $script:InstallCmd
 Assert ($r.Code -eq 0) 'install command exits with 0'
 Assert ($r.Output -match '\[dialog:Information\]') 'install reports completion'
+Assert ($r.Output -notmatch '\[dialog:Error\]') 'install reports no error'
 Assert (Test-Path -LiteralPath $installed) 'script copied to %LOCALAPPDATA%\AutoShutdown'
 $run = Get-RunValue
 Write-Host "Run value: $run"
@@ -54,9 +56,12 @@ Assert ($run -like '"*\conhost.exe" --headless *') 'Run value starts conhost --h
 Assert ($run -like "*-File `"$installed`"") 'Run value points at the installed script'
 $links = @(Get-StartMenuLinks)
 Assert ($links.Count -eq 1) "one Start menu shortcut created (found $($links.Count))"
+foreach ($l in $links) { Write-Host "Start menu shortcut name code points: $(($l.BaseName.ToCharArray() | ForEach-Object { '{0:X4}' -f [int]$_ }) -join ' ')" }
 
 $procs = Wait-InstalledAppProcesses 1
 Assert ($procs.Count -eq 1) "one app instance is running after install (found $($procs.Count))"
+# The remaining steps would start an untracked instance if install failed.
+if ($procs.Count -eq 0) { Complete-Test }
 if ($procs.Count -ge 1) {
     Write-ProcessTree $procs[0]
     $p = Get-Process -Id $procs[0].ProcessId

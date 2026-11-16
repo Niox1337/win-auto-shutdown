@@ -1,7 +1,7 @@
 . (Join-Path $PSScriptRoot 'common.ps1')
 
 # Extracts the release zip through the Explorer zip folder, with the downloaded-file mark applied first.
-$zip = Get-ChildItem -Path (Join-Path $script:RepoRoot 'pkg') -Filter '*.zip' -Recurse | Select-Object -First 1
+$zip = Get-ChildItem -Path (Join-Path $script:RepoRoot 'dist') -Filter '*.zip' -Recurse | Select-Object -First 1
 Assert ($null -ne $zip) 'release zip downloaded'
 Write-Host "zip: $($zip.FullName)"
 Set-Content -LiteralPath $zip.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3"
