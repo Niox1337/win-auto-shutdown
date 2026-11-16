@@ -99,7 +99,7 @@ try {
 
     Write-Step 'Autostart toggle'
     $isEnabled = { [AutoShutdown.App].GetMethod('IsAutostartEnabled', [System.Reflection.BindingFlags]'NonPublic,Static').Invoke($null, @()) }
-    $menuChecked = { Invoke-AppMethod $app 'SyncState'; (Get-AppField $app 'autostartItem').Checked }
+    $menuChecked = { [void](Invoke-AppMethod $app 'SyncState'); (Get-AppField $app 'autostartItem').Checked }
     Remove-ItemProperty -Path $script:RunKey -Name 'AutoShutdown' -ErrorAction SilentlyContinue
     Remove-ItemProperty -Path $script:ApprovedKey -Name 'AutoShutdown' -ErrorAction SilentlyContinue
     Assert (-not (& $isEnabled)) 'autostart reads as off without a Run value'
