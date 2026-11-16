@@ -1,0 +1,47 @@
+name: windows-test
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Environment
+        shell: powershell
+        run: |
+          $PSVersionTable.PSVersion.ToString()
+          (Get-CimInstance Win32_OperatingSystem).Caption
+          whoami
+          "UserInteractive: $([Environment]::UserInteractive)"
+          "SessionId: $((Get-Process -Id $PID).SessionId)"
+          "explorer: $(@(Get-Process explorer -ErrorAction SilentlyContinue).Count)"
+          query user 2>&1 | Out-String
+
+      - name: Parse and compile
+        shell: powershell
+        run: .\tests\compile.ps1
+
+      - name: State machine with real shutdown.exe
+        shell: powershell
+        run: .\tests\state.ps1
+
+      - name: Install and uninstall
+        shell: powershell
+        run: .\tests\install.ps1
+
+      - name: Real display-off experiment
+        continue-on-error: true
+        shell: powershell
+        run: .\tests\display.ps1
+
+      - name: Abort any pending shutdown
+        if: always()
+        shell: powershell
+        run: |
+          shutdown.exe /a 2>&1 | Out-Null
+          exit 0
