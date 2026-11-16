@@ -18,7 +18,7 @@ $warnCheck = {
     }
     catch { 'warnings or errors: ' + $_.Exception.Message }
 }
-$result = & powershell.exe -NoProfile -Command $warnCheck -args $source
+$result = Start-Job -ScriptBlock $warnCheck -ArgumentList $source | Receive-Job -Wait -AutoRemoveJob
 Write-Host $result
 
 Write-Step 'Compile as the app does'
