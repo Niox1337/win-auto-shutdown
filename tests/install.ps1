@@ -14,7 +14,7 @@ function Get-AppProcesses {
 function Wait-AppProcesses([int]$Count, [int]$TimeoutSeconds = 30) {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
-        $procs = Get-AppProcesses
+        $procs = @(Get-AppProcesses)
         if ($procs.Count -eq $Count) { return $procs }
         Start-Sleep -Milliseconds 500
     } while ((Get-Date) -lt $deadline)
@@ -58,7 +58,7 @@ if (Test-Path -LiteralPath $link) {
     Assert ($lnk.TargetPath -like '*\conhost.exe') 'shortcut targets conhost.exe'
     Assert ($lnk.Arguments -like '--headless *') 'shortcut uses --headless'
 }
-$procs = Wait-AppProcesses 1
+$procs = @(Wait-AppProcesses 1)
 Assert ($procs.Count -eq 1) "one app instance is running after install (found $($procs.Count))"
 if ($procs.Count -ge 1) {
     Write-ProcessTree $procs[0]
@@ -69,7 +69,7 @@ if ($procs.Count -ge 1) {
 if ($procs.Count -eq 0) {
     Write-Step 'Fallback: start the shortcut directly to keep testing'
     Start-Process -FilePath $link
-    $procs = Wait-AppProcesses 1
+    $procs = @(Wait-AppProcesses 1)
     Assert ($procs.Count -eq 1) "shortcut starts the app directly (found $($procs.Count))"
     if ($procs.Count -ge 1) { Write-ProcessTree $procs[0] }
 }
@@ -79,20 +79,20 @@ $r = Invoke-AppScript $installed
 Assert ($r.Code -eq 0) 'second launch exits with 0'
 Assert ($r.Output -match '\[dialog:Information\]') 'second launch reports already running'
 Assert ($r.Seconds -lt 20) 'second launch returns promptly'
-Assert ((Get-AppProcesses).Count -eq 1) 'still exactly one instance'
+Assert (@(Get-AppProcesses).Count -eq 1) 'still exactly one instance'
 
 Write-Step 'Reinstall replaces the running instance'
 $oldPid = if ($procs.Count -ge 1) { $procs[0].ProcessId } else { -1 }
 $r = Invoke-AppScript $installed @('-Install')
 Assert ($r.Code -eq 0) 'reinstall from the installed copy exits with 0'
-$procs = Wait-AppProcesses 1
+$procs = @(Wait-AppProcesses 1)
 Assert ($procs.Count -eq 1) "one instance after reinstall (found $($procs.Count))"
 if ($procs.Count -ge 1) { Assert ($procs[0].ProcessId -ne $oldPid) 'instance was restarted' }
 
 Write-Step 'Uninstall'
 $r = Invoke-AppScript (Join-Path $script:RepoRoot 'Uninstall.cmd')
 Assert ($r.Code -eq 0) 'Uninstall.cmd exits with 0'
-Assert ((Wait-AppProcesses 0 10).Count -eq 0) 'no instance after uninstall'
+Assert (@(Wait-AppProcesses 0 10).Count -eq 0) 'no instance after uninstall'
 Assert (-not (Test-Path -LiteralPath $link)) 'startup shortcut removed'
 Assert (-not (Test-Path -LiteralPath $installDir)) 'install directory removed'
 
